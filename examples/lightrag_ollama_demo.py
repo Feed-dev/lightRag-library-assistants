@@ -1,5 +1,6 @@
 import os
 
+
 from lightrag import LightRAG, QueryParam
 from lightrag.llm import ollama_model_complete, ollama_embedding
 from lightrag.utils import EmbeddingFunc
