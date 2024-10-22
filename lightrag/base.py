@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import TypedDict, Union, Literal, Generic, TypeVar
 
-
 import numpy as np
 
 from .utils import EmbeddingFunc
