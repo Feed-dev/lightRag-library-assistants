@@ -1,1 +1,1 @@
-# 🚀 LightRAG: Simple and Fast Retrieval-Augmented Generation
+# 🚀 LightRAG: Simple and Fast RAG
