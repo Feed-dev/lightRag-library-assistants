@@ -159,10 +159,28 @@ MIT License
 
 ## Requirements.txt
 ```
-PyMuPDF==1.22.5
-pytesseract==0.3.10
-Pillow==10.0.0
-spacy==3.7.2
-lightrag==0.1.0
-networkx==3.1
-pyvis==0.3.2
+# lightrag
+accelerate
+aioboto3
+graspologic
+hnswlib
+nano-vectordb
+networkx
+ollama
+openai
+tenacity
+tiktoken
+torch
+transformers
+xxhash
+pyvis
+# pdf processing
+PyMuPDF
+pytesseract
+Pillow
+spacy
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0.tar.gz
+typing-extensions
+
+# optional
+python-dotenv
