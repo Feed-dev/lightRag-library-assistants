@@ -13,6 +13,8 @@ torch
 transformers
 xxhash
 pyvis
+aiohttp
+
 # pdf processing
 PyMuPDF
 pytesseract
