@@ -3,6 +3,7 @@ import json
 import glob
 import argparse
 
+
 def extract_unique_contexts(input_directory, output_directory):
     os.makedirs(output_directory, exist_ok=True)
 
