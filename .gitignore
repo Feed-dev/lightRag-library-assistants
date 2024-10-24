@@ -6,3 +6,4 @@ lightrag-dev/
 .idea/
 dist/
 .env
+rag_indices/
