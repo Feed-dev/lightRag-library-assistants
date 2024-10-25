@@ -209,13 +209,25 @@ class LightRAGManager:
             logger.error(f"Error processing {file_path}: {e}")
             return []
 
-    def _safe_batch_insert(self, chunks: List[str]) -> None:
-        """Safely insert chunks with rate limiting and retry logic."""
-        try:
-            estimated_tokens = sum(len(chunk.split()) * 1.3 for chunk in chunks)
-            self.rate_limiter.wait_if_needed(int(estimated_tokens))
+    def validate_chunks(self, chunks: List[str]) -> bool:
+        if not chunks:
+            return False
+        return all(isinstance(chunk, str) and chunk.strip() for chunk in chunks)
 
-            process_with_backoff(self.rag.insert, chunks)
+    def _safe_batch_insert(self, chunks: List[str]) -> None:
+        try:
+            if not chunks:
+                logger.warning("Empty chunk list received")
+                return
+
+            # Process in smaller batches
+            batch_size = min(len(chunks), BATCH_SIZE)
+            for i in range(0, len(chunks), batch_size):
+                batch = chunks[i:i + batch_size]
+                self.rate_limiter.wait_if_needed()
+                # Pass as list directly to match LightRAG's expected format
+                self.rag.insert(batch)
+
         except Exception as e:
             logger.error(f"Batch insertion failed: {e}")
             raise
@@ -271,7 +283,6 @@ class LightRAGManager:
         return True
 
     def batch_insert_pdfs(self, directory_path: str) -> None:
-        """Process and batch insert PDFs with rate limiting."""
         if not self.rag:
             logger.error("No index selected")
             return
@@ -282,21 +293,19 @@ class LightRAGManager:
                      if f.lower().endswith('.pdf') and
                      f not in state.processed_files]
 
-        chunks = []
         with tqdm(total=len(pdf_files), desc="Processing PDFs") as pbar:
             for file in pdf_files:
                 try:
-                    if len(chunks) >= BATCH_SIZE:
-                        self._safe_batch_insert(chunks)
-                        chunks = []
-                        gc.collect()
-
                     file_path = os.path.join(directory_path, file)
                     if not self._validate_pdf(file_path):
                         continue
 
                     file_chunks = self._process_pdf_with_chunks(file_path)
-                    chunks.extend(file_chunks)
+                    if file_chunks:
+                        for i in range(0, len(file_chunks), BATCH_SIZE):
+                            batch = file_chunks[i:i + BATCH_SIZE]
+                            self._safe_batch_insert(batch)
+                            gc.collect()
 
                     state.processed_files.add(file)
                     state.save_state()
@@ -307,12 +316,7 @@ class LightRAGManager:
                     logger.error(f"Error processing {file}: {e}")
                     continue
 
-            # Process remaining chunks
-            if chunks:
-                self._safe_batch_insert(chunks)
-
     def incremental_insert_pdf(self, file_path: str) -> bool:
-        """Process and insert a single PDF with validation and chunking."""
         if not self.rag:
             logger.error("No index selected")
             return False
@@ -322,18 +326,16 @@ class LightRAGManager:
                 logger.error(f"PDF validation failed for {file_path}")
                 return False
 
-            with tqdm(total=1, desc=f"Processing {os.path.basename(file_path)}") as pbar:
-                chunks = self._process_pdf_with_chunks(file_path)
+            chunks = self._process_pdf_with_chunks(file_path)
+            if not chunks:
+                logger.warning(f"No valid text extracted from {file_path}")
+                return False
 
-                if not chunks:
-                    logger.warning(f"No valid text extracted from {file_path}")
-                    return False
-
-                for i in range(0, len(chunks), BATCH_SIZE):
-                    batch = chunks[i:i + BATCH_SIZE]
-                    self._safe_batch_insert(batch)
-
-                pbar.update(1)
+            # Use _safe_batch_insert directly
+            for i in range(0, len(chunks), BATCH_SIZE):
+                batch = chunks[i:i + BATCH_SIZE]
+                self._safe_batch_insert(batch)
+                gc.collect()
 
             logger.info(f"Successfully inserted {len(chunks)} chunks from: {file_path}")
             return True
@@ -373,15 +375,34 @@ class LightRAGManager:
 
 
 def main():
-    """Main function demonstrating LightRAG functionality with enhanced error handling and monitoring."""
+    """Main function focused on PDF processing and index management."""
     try:
-        # Initialize the manager with progress tracking
+        # Initialize the manager
         logger.info("Initializing LightRAG Manager...")
         manager = LightRAGManager()
 
-        # Create or switch to index with validation
-        index_name = "my_test_library_index"
-        if index_name in manager.list_indices():
+        # Demonstrate index management
+        index_operations(manager)
+
+        # Process PDFs if index is ready
+        if manager.rag:
+            process_pdf_library(manager)
+
+    except Exception as e:
+        logger.error(f"Main execution failed: {e}")
+        raise
+
+
+def index_operations(manager: LightRAGManager) -> None:
+    """Handle index creation, listing, and switching."""
+    try:
+        # List existing indices
+        existing_indices = manager.list_indices()
+        logger.info(f"Existing indices: {existing_indices}")
+
+        # Create or switch to index
+        index_name = "pdf_library_test1_index"  # add your index name
+        if index_name in existing_indices:
             logger.info(f"Switching to existing index: {index_name}")
             success = manager.switch_index(index_name)
         else:
@@ -390,75 +411,43 @@ def main():
 
         if not success:
             logger.error("Failed to initialize index")
-            return
-
-        # Process directory of PDFs with progress tracking
-        pdf_directory = r"your library directory"  # fill in the path to your library directory
-        logger.info(f"Starting batch processing of directory: {pdf_directory}")
-
-        if not os.path.exists(pdf_directory):
-            logger.error(f"Directory not found: {pdf_directory}")
-            return
-
-        try:
-            manager.batch_insert_pdfs(pdf_directory)
-        except Exception as e:
-            logger.error(f"Batch processing failed: {e}")
-            # Continue execution even if batch processing fails
-
-        # Demonstrate incremental PDF insertion with enhanced validation
-        single_pdf = r"your pdf"  # fill in the path to your pdf
-
-        if os.path.exists(single_pdf):
-            logger.info("Processing single PDF...")
-            try:
-                success = manager.incremental_insert_pdf(single_pdf)
-                if not success:
-                    logger.warning("Failed to process single PDF")
-            except Exception as e:
-                logger.error(f"Single PDF processing failed: {e}")
-        else:
-            logger.error(f"File not found: {single_pdf}")
-
-        # Demonstrate search capabilities with error handling
-        logger.info("Performing search tests...")
-        query = "What is astral projection?"
-        search_modes = ["naive", "local", "global", "hybrid"]  # Type hint moved to SearchMode definition
-
-        search_results = {}
-        for mode in search_modes:
-            try:
-                result = manager.search(query, mode=mode)
-                search_results[mode] = result
-                print(f"\n{mode.capitalize()} search results:")
-                print("-" * 50)
-                print(result)
-                print("-" * 50)
-            except Exception as e:
-                logger.error(f"Search failed for mode {mode}: {e}")
-                search_results[mode] = f"Search failed: {str(e)}"
-
-        # Generate and save graph visualization with error handling
-        logger.info("Generating graph visualization...")
-        try:
-            output_path = os.path.join(manager.current_working_dir, "rag_visualization.html")
-            result = manager.visualize_graph(output_path)
-            print(f"\nVisualization: {result}")
-        except Exception as e:
-            logger.error(f"Failed to generate visualization: {e}")
-
-        return search_results  # Return search results for potential further analysis
+            raise RuntimeError("Index initialization failed")
 
     except Exception as e:
-        logger.error(f"Main execution failed: {e}")
+        logger.error(f"Index operations failed: {e}")
+        raise
+
+
+def process_pdf_library(manager: LightRAGManager) -> None:
+    """Process PDF library with proper error handling and logging."""
+    try:
+        # Configure your PDF directory
+        pdf_directory = r"C:\Users\feder\e-books\ML_test_Library"  # path/to/your/pdf/library
+        if not os.path.exists(pdf_directory):
+            raise FileNotFoundError(f"Directory not found: {pdf_directory}")
+
+        # Process directory of PDFs
+        logger.info(f"Starting batch processing of directory: {pdf_directory}")
+        manager.batch_insert_pdfs(pdf_directory)
+
+        # Verify processing results
+        state = ProcessingState(os.path.join(manager.current_working_dir, 'processing_state.json'))
+        logger.info(f"Successfully processed {len(state.processed_files)} files")
+
+        if state.failed_files:
+            logger.warning(f"Failed to process {len(state.failed_files)} files")
+            for file, error in state.failed_files.items():
+                logger.warning(f"Failed file: {file}, Error: {error}")
+
+    except Exception as e:
+        logger.error(f"PDF processing failed: {e}")
         raise
 
 
 if __name__ == "__main__":
     try:
-        results = main()
-        if results:
-            logger.info("Search results saved successfully")
+        main()
+        logger.info("Indexing process completed successfully")
     except KeyboardInterrupt:
         logger.info("Process interrupted by user")
     except Exception as e:
