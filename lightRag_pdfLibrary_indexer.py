@@ -22,9 +22,9 @@ from tenacity import (
 )
 
 # Constants for Tier 1 Rate Limits
-RPM_LIMIT = 500  # Requests per minute
-TPM_LIMIT = 200000  # Tokens per minute
-BATCH_QUEUE_LIMIT = 2000000  # Batch queue limit
+RPM_LIMIT = 4000  # Requests per minute
+TPM_LIMIT = 1600000  # Tokens per minute
+BATCH_QUEUE_LIMIT = 16000000  # Batch queue limit
 MAX_CHUNK_SIZE = 500000
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 BATCH_SIZE = 50
