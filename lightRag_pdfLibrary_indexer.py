@@ -7,8 +7,9 @@ import networkx as nx
 from pyvis.network import Network
 from lightrag import LightRAG, QueryParam
 from lightrag.llm import gpt_4o_mini_complete
+from lightrag.utils import compute_mdhash_id
 import logging
-from typing import List, Optional, Generator, Literal
+from typing import List, Optional, Generator, Literal, Dict
 import shutil
 import json
 import gc
@@ -21,11 +22,10 @@ from tenacity import (
     wait_random_exponential,
 )
 
-# Constants for Tier 1 Rate Limits
-RPM_LIMIT = 4000  # Requests per minute
-TPM_LIMIT = 1600000  # Tokens per minute
-BATCH_QUEUE_LIMIT = 16000000  # Batch queue limit
-MAX_CHUNK_SIZE = 500000
+# Constants
+RPM_LIMIT = 4000
+TPM_LIMIT = 1600000
+BATCH_QUEUE_LIMIT = 16000000
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 BATCH_SIZE = 50
 
@@ -62,7 +62,6 @@ class RateLimiter:
             self.tokens = [(token_time, count) for token_time, count in self.tokens
                            if token_time > minute_ago]
 
-            # Check if we're over the limits
             if len(self.requests) >= self.rpm_limit:
                 sleep_time = self.requests[0][0] - minute_ago + 0.1
                 time.sleep(sleep_time)
@@ -71,36 +70,78 @@ class RateLimiter:
                 sleep_time = self.tokens[0][0] - minute_ago + 0.1
                 time.sleep(sleep_time)
 
-            # Add current request
             self.requests.append((now, 1))
             if num_tokens > 0:
                 self.tokens.append((now, num_tokens))
 
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(6))
-def process_with_backoff(func, *args, **kwargs):
-    return func(*args, **kwargs)
+def chunk_text(text: str, chunk_token_size: int, chunk_overlap_token_size: int,
+               tiktoken_model: str) -> Generator[Dict, None, None]:
+    """Chunk text using LightRAG's token-based chunking"""
+    # Clean and normalize text
+    text = text.encode('utf-8', errors='ignore').decode('utf-8')
+    text = ''.join(char for char in text if ord(char) >= 32 or char == '\n')
 
-
-def chunk_text(text: str, chunk_size: int = MAX_CHUNK_SIZE) -> Generator[str, None, None]:
     doc = nlp(text)
     current_chunk = []
     current_size = 0
 
     for sent in doc.sents:
         sent_text = sent.text.strip()
-        sent_size = len(sent_text)
+        # Skip empty sentences
+        if not sent_text:
+            continue
 
-        if current_size + sent_size > chunk_size:
-            yield ' '.join(current_chunk)
+        # Create chunk with metadata
+        if current_size + len(sent) > chunk_token_size:
+            if current_chunk:
+                chunk_text = ' '.join(current_chunk)
+                yield {
+                    "content": chunk_text,
+                    "metadata": {
+                        "chunk_size": len(chunk_text),
+                        "token_count": current_size
+                    }
+                }
             current_chunk = [sent_text]
-            current_size = sent_size
+            current_size = len(sent)
         else:
             current_chunk.append(sent_text)
-            current_size += sent_size
+            current_size += len(sent)
 
+    # Yield last chunk if it exists
     if current_chunk:
-        yield ' '.join(current_chunk)
+        chunk_text = ' '.join(current_chunk)
+        yield {
+            "content": chunk_text,
+            "metadata": {
+                "chunk_size": len(chunk_text),
+                "token_count": current_size
+            }
+        }
+
+
+@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
+def extract_text_from_page(page) -> str:
+    """Extract text from PDF page with improved UTF-8 handling"""
+    try:
+        # Try direct text extraction first
+        text = page.get_text("text", flags=fitz.TEXT_PRESERVE_LIGATURES |
+                                           fitz.TEXT_PRESERVE_WHITESPACE)
+        text = text.encode('utf-8', errors='ignore').decode('utf-8')
+
+        if text.strip():
+            return text
+
+        # Fallback to OCR if needed
+        pix = page.get_pixmap()
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        text = pytesseract.image_to_string(img)
+        return text.encode('utf-8', errors='ignore').decode('utf-8')
+
+    except Exception as e:
+        logger.error(f"Error extracting text from page: {e}")
+        return ""
 
 
 class ProcessingState:
@@ -112,51 +153,20 @@ class ProcessingState:
         self.load_state()
 
     def save_state(self):
-        with open(self.save_path, 'w') as f:
+        with open(self.save_path, 'w', encoding='utf-8') as f:
             json.dump({
                 'processed': list(self.processed_files),
                 'failed': self.failed_files,
                 'last_batch': self.last_successful_batch
-            }, f)
+            }, f, ensure_ascii=False)
 
     def load_state(self):
         if os.path.exists(self.save_path):
-            with open(self.save_path, 'r') as f:
+            with open(self.save_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 self.processed_files = set(data.get('processed', []))
                 self.failed_files = data.get('failed', {})
                 self.last_successful_batch = data.get('last_batch', 0)
-
-
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
-def extract_text_from_page(page):
-    try:
-        text = page.get_text()
-        if text.strip():
-            return text
-        else:
-            pix = page.get_pixmap()
-            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-            text = pytesseract.image_to_string(img)
-            return text
-    except Exception as e:
-        logger.error(f"Error extracting text from page: {e}")
-        return ""
-
-
-def preprocess_text(text: str) -> str:
-    text = ''.join(char for char in text if ord(char) >= 32 or char == '\n')
-    doc = nlp(text)
-    cleaned_sentences = []
-
-    for sent in doc.sents:
-        cleaned_words = [token.text for token in sent if not token.is_space]
-        cleaned_sentence = ' '.join(cleaned_words)
-        if cleaned_sentence:
-            cleaned_sentences.append(cleaned_sentence)
-
-    gc.collect()  # Force garbage collection
-    return ' '.join(cleaned_sentences)
 
 
 class LightRAGManager:
@@ -168,6 +178,76 @@ class LightRAGManager:
 
         if not os.path.exists(base_dir):
             os.makedirs(base_dir)
+
+    def _process_pdf_with_chunks(self, file_path: str) -> List[Dict]:
+        chunks = []
+        try:
+            doc = fitz.open(file_path)
+            doc_metadata = doc.metadata
+
+            for page_num in tqdm(range(len(doc)), desc=f"Processing {os.path.basename(file_path)}"):
+                page = doc.load_page(page_num)
+                page_text = extract_text_from_page(page)
+
+                if page_text:
+                    # Create chunks with metadata using LightRAG's chunking parameters
+                    page_chunks = list(chunk_text(
+                        page_text,
+                        self.rag.chunk_token_size,
+                        self.rag.chunk_overlap_token_size,
+                        self.rag.tiktoken_model_name
+                    ))
+
+                    for chunk in page_chunks:
+                        chunk_metadata = {
+                            "source": file_path,
+                            "page": page_num + 1,
+                            "title": doc_metadata.get("title", ""),
+                            "author": doc_metadata.get("author", ""),
+                            **chunk["metadata"]
+                        }
+                        chunks.append({
+                            "content": chunk["content"],
+                            "metadata": chunk_metadata
+                        })
+
+                page = None
+                gc.collect()
+
+            doc.close()
+            return chunks
+
+        except Exception as e:
+            logger.error(f"Error processing {file_path}: {e}")
+            return []
+
+    def _safe_batch_insert(self, chunks: List[Dict]) -> None:
+        try:
+            if not chunks:
+                logger.warning("Empty chunk list received")
+                return
+
+            # Process in optimal batch sizes
+            batch_size = min(len(chunks), self.rag.embedding_batch_num)
+
+            for i in range(0, len(chunks), batch_size):
+                batch = chunks[i:i + batch_size]
+
+                # Prepare batch for insertion
+                batch_docs = {}
+                for chunk in batch:
+                    chunk_id = compute_mdhash_id(chunk["content"], prefix="chunk-")
+                    batch_docs[chunk_id] = {
+                        "content": chunk["content"],
+                        "metadata": chunk["metadata"]
+                    }
+
+                self.rate_limiter.wait_if_needed()
+                self.rag.insert(batch_docs)
+
+        except Exception as e:
+            logger.error(f"Batch insertion failed: {e}")
+            raise
 
     def _validate_pdf(self, file_path: str) -> bool:
         if not os.path.exists(file_path):
@@ -185,52 +265,6 @@ class LightRAGManager:
         except Exception as e:
             logger.error(f"Invalid PDF file {file_path}: {e}")
             return False
-
-    def _process_pdf_with_chunks(self, file_path: str) -> List[str]:
-        chunks = []
-        try:
-            doc = fitz.open(file_path)
-
-            for page_num in tqdm(range(len(doc)), desc=f"Processing {os.path.basename(file_path)}"):
-                page = doc.load_page(page_num)
-                page_text = extract_text_from_page(page)
-
-                if page_text:
-                    for chunk in chunk_text(page_text):
-                        chunks.append(chunk)
-
-                page = None
-                gc.collect()
-
-            doc.close()
-            return chunks
-
-        except Exception as e:
-            logger.error(f"Error processing {file_path}: {e}")
-            return []
-
-    def validate_chunks(self, chunks: List[str]) -> bool:
-        if not chunks:
-            return False
-        return all(isinstance(chunk, str) and chunk.strip() for chunk in chunks)
-
-    def _safe_batch_insert(self, chunks: List[str]) -> None:
-        try:
-            if not chunks:
-                logger.warning("Empty chunk list received")
-                return
-
-            # Process in smaller batches
-            batch_size = min(len(chunks), BATCH_SIZE)
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i + batch_size]
-                self.rate_limiter.wait_if_needed()
-                # Pass as list directly to match LightRAG's expected format
-                self.rag.insert(batch)
-
-        except Exception as e:
-            logger.error(f"Batch insertion failed: {e}")
-            raise
 
     def create_index(self, index_name: str) -> bool:
         """Create a new index with specified name."""
@@ -323,21 +357,18 @@ class LightRAGManager:
 
         try:
             if not self._validate_pdf(file_path):
-                logger.error(f"PDF validation failed for {file_path}")
                 return False
 
+            # Process PDF into chunks with metadata
             chunks = self._process_pdf_with_chunks(file_path)
             if not chunks:
                 logger.warning(f"No valid text extracted from {file_path}")
                 return False
 
-            # Use _safe_batch_insert directly
-            for i in range(0, len(chunks), BATCH_SIZE):
-                batch = chunks[i:i + BATCH_SIZE]
-                self._safe_batch_insert(batch)
-                gc.collect()
+            # Insert chunks
+            self._safe_batch_insert(chunks)
 
-            logger.info(f"Successfully inserted {len(chunks)} chunks from: {file_path}")
+            logger.info(f"Successfully processed {len(chunks)} chunks from: {file_path}")
             return True
 
         except Exception as e:
