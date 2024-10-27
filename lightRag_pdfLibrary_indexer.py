@@ -422,7 +422,7 @@ def process_pdf_library(manager: LightRAGManager) -> None:
     """Process PDF library with proper error handling and logging."""
     try:
         # Configure your PDF directory
-        pdf_directory = r"path/to/your/pdf/library"  # path/to/your/pdf/library
+        pdf_directory = r"C:\Users\feder\e-books\ML_test_Library"  # path/to/your/pdf/library
         if not os.path.exists(pdf_directory):
             raise FileNotFoundError(f"Directory not found: {pdf_directory}")
 
