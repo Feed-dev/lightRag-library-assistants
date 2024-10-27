@@ -1,81 +1,88 @@
 from lightrag import LightRAG, QueryParam
-from lightrag.llm import gpt_4o_mini_complete
 import logging
 import os
+import json
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Setup basic logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Hardcoded working directory
-WORKING_DIR = "./rag_indices/pdf_library_test1_index"
 
+class RAGQuerier:
+    def __init__(self, index_path: str):
+        self.index_path = index_path
+        self.rag = None
+        self.initialize_rag()
 
-class RAGQueryChat:
-    def __init__(self):
-        """Initialize RAG query system with hardcoded index."""
+    def initialize_rag(self):
         try:
-            self.rag = LightRAG(
-                working_dir=WORKING_DIR,
-                llm_model_func=gpt_4o_mini_complete
-            )
-            logger.info(f"Successfully loaded index from {WORKING_DIR}")
+            if not os.path.exists(self.index_path):
+                logger.error(f"Index directory not found: {self.index_path}")
+                return False
+
+            self.rag = LightRAG(working_dir=self.index_path)
+            logger.info(f"Successfully loaded index from: {self.index_path}")
+            return True
         except Exception as e:
             logger.error(f"Failed to initialize RAG: {e}")
-            raise
+            return False
 
-    def query(self, question: str) -> str:
-        """Execute query using hybrid mode."""
+    def search(self, query: str, mode: str = "hybrid") -> str:
         try:
-            response = self.rag.query(
-                question,
-                param=QueryParam(
-                    mode="hybrid",
-                    max_token_for_text_unit=4000
-                )
+            if not self.rag:
+                return "No index loaded"
+
+            # Create query parameters
+            param = QueryParam(
+                mode=mode,
+                top_k=60,
+                max_token_for_text_unit=4000,
+                max_token_for_global_context=4000,
+                max_token_for_local_context=4000,
+                response_type="Multiple Paragraphs"
             )
-            return response
+
+            # Execute search
+            result = self.rag.query(query=query, param=param)
+
+            if result is None:
+                return "No results found for the query"
+
+            return result
+
         except Exception as e:
-            logger.error(f"Query failed: {e}")
-            return f"Error processing query: {str(e)}"
-
-    def chat_loop(self):
-        """Main chat loop."""
-        print(f"Welcome to RAG Query Chat!")
-        print("Type 'quit' to exit")
-
-        while True:
-            try:
-                user_input = input("\nQuestion: ").strip()
-
-                if not user_input:
-                    continue
-
-                if user_input.lower() == 'quit':
-                    print("Goodbye!")
-                    break
-
-                print("\nSearching...")
-                response = self.query(user_input)
-                print("\nResponse:", response)
-
-            except KeyboardInterrupt:
-                print("\nExiting...")
-                break
-            except Exception as e:
-                logger.error(f"Error in chat loop: {e}")
-                print(f"An error occurred: {str(e)}")
+            logger.error(f"Search failed: {e}")
+            return f"Search failed: {str(e)}"
 
 
 def main():
-    """Main entry point."""
-    try:
-        chat = RAGQueryChat()
-        chat.chat_loop()
-    except Exception as e:
-        logger.error(f"Application error: {e}")
-        raise
+    # Update this path to match your index location
+    index_path = "./rag_indices/pdf_library_index"
+
+    # Initialize querier
+    querier = RAGQuerier(index_path)
+
+    # Test different search modes
+    modes = ["hybrid", "local", "global", "naive"]
+    query = "What are the main topics covered in the documents?"
+
+    for mode in modes:
+        print(f"\nTrying search mode: {mode}")
+        print("-" * 80)
+
+        result = querier.search(query, mode=mode)
+        if result and result != "No results found for the query":
+            print("Result:", result)
+            print("-" * 80)
+            break
+        else:
+            print(f"No results in {mode} mode, trying next mode...")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nSearch interrupted by user")
+    except Exception as e:
+        logger.error(f"Error during search: {e}")
