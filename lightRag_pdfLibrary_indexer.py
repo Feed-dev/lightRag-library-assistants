@@ -23,8 +23,8 @@ from tenacity import (
 )
 
 # Constants
-RPM_LIMIT = 4000
-TPM_LIMIT = 1600000
+RPM_LIMIT = 4000  # openai rate limits https://platform.openai.com/settings/organization/limits
+TPM_LIMIT = 1600000  # check your openai usage tier and rate limits
 BATCH_QUEUE_LIMIT = 16000000
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 BATCH_SIZE = 32  # Align with embedding batch size
