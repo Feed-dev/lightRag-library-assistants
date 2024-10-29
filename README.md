@@ -55,7 +55,7 @@ pdf_directory = r"C:\Users\feder\e-books\ML_test_Library"  # path/to/your/pdf/li
 index_path = "./rag_indices/pdf_library_index" # your index path
 ```
    
-3. Start Chat Interface
+3. Start Chat Interface (`rag_chatbot.py`)
 ```bash
 python rag_chatbot.py
 ```
