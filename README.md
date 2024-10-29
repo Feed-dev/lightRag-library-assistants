@@ -1,6 +1,6 @@
 # LightRAG PDF Library Indexer & Chatbot
 
-A Python-based scripts that uses LightRAG to process, index, and query PDF document libraries.
+Python-based scripts that use LightRAG to process, index, and query PDF document libraries.
 
 ## Components
 
