@@ -59,9 +59,9 @@ index_path = "./rag_indices/pdf_library_index" # your index path
 ```
    
 3. Start Chat Interface
-   ```bash
-   export OPENAI_API_KEY="your-api-key-here"
-   ```
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+```
    
 ## Contributing
 
