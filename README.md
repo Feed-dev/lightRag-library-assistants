@@ -43,24 +43,21 @@ export OPENAI_API_KEY="your-api-key-here"
 
 ## Usage
 1. Index Your PDFs (`lightRag_pdfLibrary_indexer.py`)
-set:
 ```python
 index_name = "pdf_library_index"  # add your index name
 ```
-Configure:
 ```python
 pdf_directory = r"C:\Users\feder\e-books\ML_test_Library"  # path/to/your/pdf/library
 ```
    
 2. Test Querying the Index (`lightRag_queryIndex.py`)
-set:
 ```python
 index_path = "./rag_indices/pdf_library_index" # your index path
 ```
    
 3. Start Chat Interface
 ```bash
-export OPENAI_API_KEY="your-api-key-here"
+python rag_chatbot.py
 ```
    
 ## Contributing
