@@ -25,7 +25,7 @@ from tenacity import (
 # Constants
 RPM_LIMIT = 4000  # openai rate limits https://platform.openai.com/settings/organization/limits
 TPM_LIMIT = 1600000  # check your openai usage tier and rate limits
-BATCH_QUEUE_LIMIT = 16000000
+BATCH_QUEUE_LIMIT = 16000000  # idem
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 BATCH_SIZE = 32  # Align with embedding batch size
 MAX_TOKEN_SIZE = 512  # Match embedding model limit
@@ -190,7 +190,6 @@ class LightRAGManager:
                 page_text = extract_text_from_page(page)
 
                 if page_text:
-                    # Use the new chunking method
                     page_chunks = list(self.chunk_text(page_text))
 
                     for chunk in page_chunks:
