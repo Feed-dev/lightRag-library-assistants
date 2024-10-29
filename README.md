@@ -42,7 +42,7 @@ export OPENAI_API_KEY="your-api-key-here"
 
 
 ## Usage
-1. Index Your PDFs (`lightRag_pdfLibrary_indexer.py`)
+1. To Index Your PDFs (`lightRag_pdfLibrary_indexer.py`)
    set these before indexing:
 ```python
 index_name = "pdf_library_index"  # add your index name
@@ -51,7 +51,7 @@ index_name = "pdf_library_index"  # add your index name
 pdf_directory = r"C:\Users\feder\e-books\ML_test_Library"  # path/to/your/pdf/library
 ```
    
-2. Test Querying the Index (`lightRag_queryIndex.py`)
+2. To Test Querying the Index (`lightRag_queryIndex.py`)
    check the index path:
 ```python
 index_path = "./rag_indices/pdf_library_index" # your index path
