@@ -1,4 +1,4 @@
-# LightRAG PDF Library Assistant
+# LightRAG PDF Library Indexer
 
 A Python-based conversational AI system that uses LightRAG to process, index, and query PDF document libraries.
 
