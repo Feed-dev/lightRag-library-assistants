@@ -6,7 +6,7 @@ import spacy
 import networkx as nx
 from pyvis.network import Network
 from lightrag import LightRAG, QueryParam
-from lightrag.llm import gpt_4o_mini_complete
+from lightrag.llm import gpt_4o_mini_complete, openai_embedding
 from lightrag.utils import compute_mdhash_id
 import logging
 from typing import List, Optional, Generator, Literal, Dict
@@ -27,7 +27,8 @@ RPM_LIMIT = 4000
 TPM_LIMIT = 1600000
 BATCH_QUEUE_LIMIT = 16000000
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-BATCH_SIZE = 50
+BATCH_SIZE = 32  # Align with embedding batch size
+MAX_TOKEN_SIZE = 512  # Match embedding model limit
 
 # Type definitions
 SearchMode = Literal["local", "global", "hybrid", "naive"]
@@ -73,52 +74,6 @@ class RateLimiter:
             self.requests.append((now, 1))
             if num_tokens > 0:
                 self.tokens.append((now, num_tokens))
-
-
-def chunk_text(text: str, chunk_token_size: int, chunk_overlap_token_size: int,
-               tiktoken_model: str) -> Generator[Dict, None, None]:
-    """Chunk text using LightRAG's token-based chunking"""
-    # Clean and normalize text
-    text = text.encode('utf-8', errors='ignore').decode('utf-8')
-    text = ''.join(char for char in text if ord(char) >= 32 or char == '\n')
-
-    doc = nlp(text)
-    current_chunk = []
-    current_size = 0
-
-    for sent in doc.sents:
-        sent_text = sent.text.strip()
-        # Skip empty sentences
-        if not sent_text:
-            continue
-
-        # Create chunk with metadata
-        if current_size + len(sent) > chunk_token_size:
-            if current_chunk:
-                chunk_text = ' '.join(current_chunk)
-                yield {
-                    "content": chunk_text,
-                    "metadata": {
-                        "chunk_size": len(chunk_text),
-                        "token_count": current_size
-                    }
-                }
-            current_chunk = [sent_text]
-            current_size = len(sent)
-        else:
-            current_chunk.append(sent_text)
-            current_size += len(sent)
-
-    # Yield last chunk if it exists
-    if current_chunk:
-        chunk_text = ' '.join(current_chunk)
-        yield {
-            "content": chunk_text,
-            "metadata": {
-                "chunk_size": len(chunk_text),
-                "token_count": current_size
-            }
-        }
 
 
 @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
@@ -179,6 +134,51 @@ class LightRAGManager:
         if not os.path.exists(base_dir):
             os.makedirs(base_dir)
 
+    def chunk_text(self, text: str) -> Generator[Dict, None, None]:
+        """Chunk text using optimized token-based chunking"""
+        # Clean and normalize text
+        text = text.encode('utf-8', errors='ignore').decode('utf-8')
+        text = ''.join(char for char in text if ord(char) >= 32 or char == '\n')
+
+        doc = nlp(text)
+        current_chunk = []
+        current_size = 0
+
+        for sent in doc.sents:
+            sent_text = sent.text.strip()
+            if not sent_text:
+                continue
+
+            # Get token count for the sentence
+            sent_tokens = len(sent)
+
+            if current_size + sent_tokens > self.rag.chunk_token_size:
+                if current_chunk:
+                    chunk_text = ' '.join(current_chunk)
+                    yield {
+                        "content": chunk_text,
+                        "metadata": {
+                            "chunk_size": len(chunk_text),
+                            "token_count": current_size
+                        }
+                    }
+                current_chunk = [sent_text]
+                current_size = sent_tokens
+            else:
+                current_chunk.append(sent_text)
+                current_size += sent_tokens
+
+        # Yield last chunk if it exists
+        if current_chunk:
+            chunk_text = ' '.join(current_chunk)
+            yield {
+                "content": chunk_text,
+                "metadata": {
+                    "chunk_size": len(chunk_text),
+                    "token_count": current_size
+                }
+            }
+
     def _process_pdf_with_chunks(self, file_path: str) -> List[Dict]:
         chunks = []
         try:
@@ -190,26 +190,22 @@ class LightRAGManager:
                 page_text = extract_text_from_page(page)
 
                 if page_text:
-                    # Create chunks with metadata using LightRAG's chunking parameters
-                    page_chunks = list(chunk_text(
-                        page_text,
-                        self.rag.chunk_token_size,
-                        self.rag.chunk_overlap_token_size,
-                        self.rag.tiktoken_model_name
-                    ))
+                    # Use the new chunking method
+                    page_chunks = list(self.chunk_text(page_text))
 
                     for chunk in page_chunks:
-                        chunk_metadata = {
-                            "source": file_path,
-                            "page": page_num + 1,
-                            "title": doc_metadata.get("title", ""),
-                            "author": doc_metadata.get("author", ""),
-                            **chunk["metadata"]
-                        }
-                        chunks.append({
-                            "content": chunk["content"],
-                            "metadata": chunk_metadata
-                        })
+                        if chunk["content"].strip():  # Verify chunk has content
+                            chunk_metadata = {
+                                "source": file_path,
+                                "page": page_num + 1,
+                                "title": doc_metadata.get("title", ""),
+                                "author": doc_metadata.get("author", ""),
+                                **chunk["metadata"]
+                            }
+                            chunks.append({
+                                "content": chunk["content"],
+                                "metadata": chunk_metadata
+                            })
 
                 page = None
                 gc.collect()
@@ -275,17 +271,20 @@ class LightRAGManager:
 
         os.makedirs(working_dir)
         self.current_working_dir = working_dir
+
+        # Initialize LightRAG with correct parameters
         self.rag = LightRAG(
             working_dir=working_dir,
             llm_model_func=gpt_4o_mini_complete,
+            chunk_token_size=512,  # Match embedding model limit
+            chunk_overlap_token_size=50,
+            embedding_func=openai_embedding,  # Pass the function directly
+            embedding_batch_num=32,
+            tiktoken_model_name="gpt-4o-mini"
         )
+
         logger.info(f"Created new index: {index_name}")
         return True
-
-    def list_indices(self) -> List[str]:
-        """List all available indices."""
-        return [d for d in os.listdir(self.base_dir)
-                if os.path.isdir(os.path.join(self.base_dir, d))]
 
     def switch_index(self, index_name: str) -> bool:
         """Switch to an existing index."""
@@ -295,12 +294,25 @@ class LightRAGManager:
             return False
 
         self.current_working_dir = working_dir
+
+        # Initialize LightRAG with correct parameters
         self.rag = LightRAG(
             working_dir=working_dir,
             llm_model_func=gpt_4o_mini_complete,
+            chunk_token_size=512,
+            chunk_overlap_token_size=50,
+            embedding_func=openai_embedding,  # Pass the function directly
+            embedding_batch_num=32,
+            tiktoken_model_name="gpt-4o-mini"
         )
+
         logger.info(f"Switched to index: {index_name}")
         return True
+
+    def list_indices(self) -> List[str]:
+        """List all available indices."""
+        return [d for d in os.listdir(self.base_dir)
+                if os.path.isdir(os.path.join(self.base_dir, d))]
 
     def delete_index(self, index_name: str) -> bool:
         """Delete an existing index."""
