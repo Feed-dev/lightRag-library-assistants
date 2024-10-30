@@ -51,13 +51,7 @@ index_name = "pdf_library_index"  # add your index name
 pdf_directory = r"C:\Users\feder\e-books\ML_test_Library"  # path/to/your/pdf/library
 ```
    
-2. To Test Querying the Index (`lightRag_queryIndex.py`)
-   check the index path:
-```python
-index_path = "./rag_indices/pdf_library_index" # your index path
-```
-   
-3. Start Chat Interface (`rag_chatbot.py`)
+2. Start Chat Interface (`rag_chatbot.py`)
 ```bash
 python rag_chatbot.py
 ```
