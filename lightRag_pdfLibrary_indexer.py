@@ -23,12 +23,20 @@ from tenacity import (
 )
 
 # Constants
-RPM_LIMIT = 4000  # openai rate limits https://platform.openai.com/settings/organization/limits
-TPM_LIMIT = 1600000  # check your openai usage tier and rate limits
-BATCH_QUEUE_LIMIT = 16000000  # idem
+# OpenAI Rate Limits
+# check your openai usage tier and rate limits https://platform.openai.com/settings/organization/limits
+RPM_LIMIT = 4000  # set 80% max limit of Tier2
+TPM_LIMIT = 1600000  # set 80% max limit of Tier2
+BATCH_QUEUE_LIMIT = 16000000  # not used in script
+
+# File and Batch Settings
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
-BATCH_SIZE = 32  # Align with embedding batch size
-MAX_TOKEN_SIZE = 512  # Match embedding model limit
+BATCH_SIZE = 32  # Align with embedding batch size num in lightrag.py
+
+# Token Size Configuration (see lightrag.py)
+# default is 1200 with 200 overlap
+CHUNK_TOKEN_SIZE = 512  # Current working size (MAX 8192 for text-embedding-3-small)
+CHUNK_OVERLAP_SIZE = 50  # Overlap between chunks, ~10-15% of chunk token size
 
 # Type definitions
 SearchMode = Literal["local", "global", "hybrid", "naive"]
@@ -275,10 +283,10 @@ class LightRAGManager:
         self.rag = LightRAG(
             working_dir=working_dir,
             llm_model_func=gpt_4o_mini_complete,
-            chunk_token_size=512,  # Match embedding model limit
-            chunk_overlap_token_size=50,
+            chunk_token_size=CHUNK_TOKEN_SIZE,
+            chunk_overlap_token_size=CHUNK_OVERLAP_SIZE,
             embedding_func=openai_embedding,  # Pass the function directly
-            embedding_batch_num=32,
+            embedding_batch_num=32,  # Align with embedding batch size num in lightrag.py
             tiktoken_model_name="gpt-4o-mini"
         )
 
@@ -298,10 +306,10 @@ class LightRAGManager:
         self.rag = LightRAG(
             working_dir=working_dir,
             llm_model_func=gpt_4o_mini_complete,
-            chunk_token_size=512,
-            chunk_overlap_token_size=50,
+            chunk_token_size=CHUNK_TOKEN_SIZE,
+            chunk_overlap_token_size=CHUNK_OVERLAP_SIZE,
             embedding_func=openai_embedding,  # Pass the function directly
-            embedding_batch_num=32,
+            embedding_batch_num=32,  # Align with embedding batch size num in lightrag.py
             tiktoken_model_name="gpt-4o-mini"
         )
 
@@ -443,7 +451,7 @@ def index_operations(manager: LightRAGManager) -> None:
         logger.info(f"Existing indices: {existing_indices}")
 
         # Create or switch to index
-        index_name = "pdf_library_index"  # add your index name
+        index_name = "pdf_library_index2"  # add your index name
         if index_name in existing_indices:
             logger.info(f"Switching to existing index: {index_name}")
             success = manager.switch_index(index_name)
