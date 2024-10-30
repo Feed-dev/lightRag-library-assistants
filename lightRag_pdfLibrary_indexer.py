@@ -450,7 +450,7 @@ def index_operations(manager: LightRAGManager) -> None:
         logger.info(f"Existing indices: {existing_indices}")
 
         # Create or switch to index
-        index_name = "pdf_library_index7"  # add your index name
+        index_name = "pdf_library_index"  # add your index name
         if index_name in existing_indices:
             logger.info(f"Switching to existing index: {index_name}")
             success = manager.switch_index(index_name)
