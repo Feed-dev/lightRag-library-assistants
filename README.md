@@ -9,10 +9,7 @@ Python-based scripts that use LightRAG to process, index, and query PDF document
 - Handles both digital and scanned PDFs (with OCR)
 - Creates and manages document indices
 
-### 2. Query Index (`lightRag_queryIndex.py`)
-- Provides multiple search modes (hybrid, local, global, naive)
-
-### 3. Chat Interface (`rag_chatbot.py`)
+### 2. Chat Interface (`rag_chatbot.py`)
 - Interactive conversational interface
 - Uses hybrid search for optimal results
 
