@@ -48,7 +48,7 @@ export OPENAI_API_KEY="your-api-key-here"
 index_name = "pdf_library_index"  # add your index name
 ```
 ```python
-pdf_directory = r"C:\Users\feder\e-books\ML_test_Library"  # path/to/your/pdf/library
+pdf_directory = r"path/to/your/pdf/library"  # add your path/to/your/pdf/library
 ```
    
 2. Start Chat Interface (`rag_chatbot.py`)
