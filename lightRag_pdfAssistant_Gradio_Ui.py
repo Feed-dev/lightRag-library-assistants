@@ -55,6 +55,19 @@ class LightRAGUI:
             logger.error(f"Error in create_new_index: {e}")
             return self.list_indices(), name, f"Error: {str(e)}"
 
+    def initialize_chat_index(self, index_name: str) -> str:
+        """Initialize chatbot with selected index"""
+        try:
+            if not index_name:
+                return "Please select an index first"
+
+            index_path = os.path.join("./rag_indices", index_name)
+            if self.chatbot.initialize_rag(index_path):
+                return f"Chat initialized with index: {index_name}"
+            return "Failed to initialize chat with selected index"
+        except Exception as e:
+            return f"Error initializing chat: {str(e)}"
+
     def handle_file_selection(self, files) -> tuple[str, list]:
         self.selected_files = files if isinstance(files, list) else [files]
         return f"Selected {len(self.selected_files)} files/directories", self.selected_files
@@ -148,11 +161,19 @@ def create_ui():
                 process_output = gr.Textbox(label="Processing Status", interactive=False)
 
         with gr.Tab("Chat"):
+            with gr.Row():
+                chat_index_dropdown = gr.Dropdown(
+                    choices=ui.list_indices(),
+                    label="Select Index for Chat",
+                    interactive=True
+                )
+                init_status = gr.Textbox(label="Initialization Status", interactive=False)
+
             chatbot = gr.Chatbot(height=500, type="messages")
             with gr.Row():
                 msg = gr.Textbox(label="Message", placeholder="Type your message here...")
                 send = gr.Button("Send")
-            clear = gr.Button("Clear Chat")
+                clear = gr.Button("Clear Chat")
 
         def handle_create_index(name):
             with gr.Row():
@@ -164,13 +185,13 @@ def create_ui():
                 create_index_output: message + "\nPlease select the new index from the dropdown to start using it."
             }
 
-        # Event handlers
-        def on_dropdown_change(value):
-            """Handle dropdown selection changes."""
-            if not value:
-                return value, "Please select an index"
-            return ui.handle_index_selection(value)  # This now correctly returns two values
+        def safe_chat_query(message: str, history: list) -> tuple:
+            if not ui.chatbot.rag:
+                return "", [{"role": "user", "content": message},
+                            {"role": "assistant", "content": "Please select and initialize an index first"}]
+            return ui.chat_query(message, history)
 
+        # Event handlers
         index_dropdown.change(
             fn=ui.handle_index_selection,
             inputs=index_dropdown,
@@ -202,14 +223,20 @@ def create_ui():
             outputs=process_output
         )
 
+        chat_index_dropdown.change(
+            fn=ui.initialize_chat_index,
+            inputs=chat_index_dropdown,
+            outputs=init_status
+        )
+
         send.click(
-            fn=ui.chat_query,
+            fn=safe_chat_query,
             inputs=[msg, chatbot],
             outputs=[msg, chatbot]
         )
 
         msg.submit(
-            fn=ui.chat_query,
+            fn=safe_chat_query,
             inputs=[msg, chatbot],
             outputs=[msg, chatbot]
         )
