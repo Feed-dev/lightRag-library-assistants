@@ -5,6 +5,7 @@ book.txt
 lightrag-dev/
 .idea/
 dist/
+rag_indices/
 gpt-4o-mini_indexing_&_chat/rag_indices/
 .env
 lib/
