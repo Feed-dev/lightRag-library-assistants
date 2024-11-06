@@ -8,3 +8,4 @@ dist/
 rag_indices/
 .env
 lib/
+adapted_prompts/
