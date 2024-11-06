@@ -61,7 +61,7 @@ class LightRAGUI:
             if not index_name:
                 return "Please select an index first"
 
-            index_path = os.path.join("../rag_indices", index_name)
+            index_path = os.path.join("rag_indices", index_name)
             if self.chatbot.initialize_rag(index_path):
                 return f"Chat initialized with index: {index_name}"
             return "Failed to initialize chat with selected index"
