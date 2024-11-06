@@ -105,7 +105,7 @@ def chat_interface():
             print("Please enter a valid number.")
 
     # Initialize RAG with selected index
-    index_path = os.path.join("../rag_indices", selected_index)
+    index_path = os.path.join("rag_indices", selected_index)
     if not chatbot.initialize_rag(index_path):
         print("Failed to initialize chatbot. Exiting.")
         return
