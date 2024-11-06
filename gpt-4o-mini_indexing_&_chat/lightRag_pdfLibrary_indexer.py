@@ -34,8 +34,8 @@ MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 BATCH_SIZE = 32  # Align with embedding batch size num in lightrag.py
 
 # Token Size Configuration (see lightrag.py)
-CHUNK_TOKEN_SIZE = 512  # Current working size (MAX 8192 for text-embedding-3-small)
-CHUNK_OVERLAP_SIZE = 50  # Overlap between chunks, ~10-15% of chunk token size
+CHUNK_TOKEN_SIZE = 1200  # Current working size (MAX 8192 for text-embedding-3-small)
+CHUNK_OVERLAP_SIZE = 100  # Overlap between chunks, ~10-15% of chunk token size
 
 # Type definitions
 SearchMode = Literal["local", "global", "hybrid", "naive"]
@@ -450,7 +450,7 @@ def index_operations(manager: LightRAGManager) -> None:
         logger.info(f"Existing indices: {existing_indices}")
 
         # Create or switch to index
-        index_name = "The_Mystic_Library"  # add your index name
+        index_name = "add your index name"  # add your index name
         if index_name in existing_indices:
             logger.info(f"Switching to existing index: {index_name}")
             success = manager.switch_index(index_name)
@@ -471,7 +471,7 @@ def process_pdf_library(manager: LightRAGManager) -> None:
     """Process PDF library with proper error handling and logging."""
     try:
         # Configure your PDF directory
-        pdf_directory = r"C:\Users\feder\e-books\ML_test_Library"  # path/to/your/pdf/library
+        pdf_directory = r"path/to/your/pdf/library"  # path/to/your/pdf/library
         if not os.path.exists(pdf_directory):
             raise FileNotFoundError(f"Directory not found: {pdf_directory}")
 
