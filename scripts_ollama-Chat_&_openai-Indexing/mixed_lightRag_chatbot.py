@@ -20,7 +20,7 @@ class RAGChatbot:
         self.chunk_token_size = 512
         self.chunk_overlap_size = 50
         self.embedding_dim = 768  # nomic-embed-text dimension
-        self.max_token_size = 4096
+        self.max_token_size = 8192
 
     def initialize_rag(self, index_path: str) -> bool:
         """Initialize RAG with specified index"""
