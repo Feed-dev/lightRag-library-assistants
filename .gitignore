@@ -6,8 +6,8 @@ lightrag-dev/
 .idea/
 dist/
 rag_indices/
-gpt-4o-mini_indexing_&_chat/rag_indices/
-Ollama_chat_&_gpt-4o-mini_indexing/rag_indices/
+scripts_openai_Chat_&_Indexing/rag_indices/
+scripts_ollama-Chat_&_openai-Indexing/rag_indices/
 .env
 lib/
 adapted_prompts/
