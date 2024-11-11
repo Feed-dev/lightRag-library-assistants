@@ -53,9 +53,6 @@ pdf_directory = r"path/to/your/pdf/library"  # add your path/to/your/pdf/library
 python rag_chatbot.py
 ```
    
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues, fork the repository, and create pull requests for any improvements.
 
 ## License
 
