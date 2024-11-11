@@ -435,7 +435,7 @@ def index_operations(manager: LightRAGManager) -> None:
         logger.info(f"Existing indices: {existing_indices}")
 
         # Create or switch to index
-        index_name = "mixed_test_index1"  # add your index name
+        index_name = "add your index name"  # add your index name
         if index_name in existing_indices:
             logger.info(f"Switching to existing index: {index_name}")
             success = manager.switch_index(index_name)
