@@ -16,7 +16,7 @@ class RAGChatbot:
         self.rag = None
         self.chat_history = []
 
-        # Llama 3.2 3B specific configurations
+        # Llama 3.2 3B configurations
         self.chunk_token_size = 512
         self.chunk_overlap_size = 50
         self.embedding_dim = 768  # nomic-embed-text dimension
